@@ -4,6 +4,7 @@
 #include "tlc5940.h"
 
 uint8_t TLC5940_count;
+uint16_t *TLC5940_grayScale;
 
 void SPI_MasterInit(void)
 {
@@ -38,7 +39,7 @@ void TLC5940_TransmitDC(uint8_t dotCorrection[])
 	SPI_MasterTerminate();
 }
 
-void TLC5940_TransmitGS(uint16_t grayScale[])
+void TLC5940_TransmitGS()
 {
 	/* Send the 12-bit grayscale values as a continuous stream of bytes */
 	SPI_MasterInit();
@@ -46,21 +47,38 @@ void TLC5940_TransmitGS(uint16_t grayScale[])
 	switch (i%3)
 	{
 		case 0:
-		SPI_MasterTransmit(grayScale[16*TLC5940_count-1-2*(i/3)]>>4);
+		SPI_MasterTransmit(TLC5940_grayScale[16*TLC5940_count-1-2*(i/3)]>>4);
 		break;
 		case 1:
-		SPI_MasterTransmit((grayScale[16*TLC5940_count-1-2*(i/3)]<<4)|(grayScale[16*TLC5940_count-1-(2*(i/3)+1)]>>8));
+		SPI_MasterTransmit((TLC5940_grayScale[16*TLC5940_count-1-2*(i/3)]<<4)|(TLC5940_grayScale[16*TLC5940_count-1-(2*(i/3)+1)]>>8));
 		break;
 		case 2:
-		SPI_MasterTransmit(grayScale[16*TLC5940_count-1-(2*(i/3)+1)]);
+		SPI_MasterTransmit(TLC5940_grayScale[16*TLC5940_count-1-(2*(i/3)+1)]);
 		break;
 	}
 	SPI_MasterTerminate();
 }
 
+ISR(TIMER0_COMPA_vect)
+{
+	/* Pulse SCK */
+	PORT_SPI |= (1<<DD_SCK);
+	PORT_SPI &= ~(1<<DD_SCK);
+	/* Transmit the grayscale data */
+	TLC5940_TransmitGS();
+	/* Set BLANK to high */
+	PORT_TLC5940 |= (1<<DD_BLANK);
+	/* Pulse XLAT */
+	PORT_TLC5940 |= (1<<DD_XLAT);
+	PORT_TLC5940 &= ~(1<<DD_XLAT);
+	/* Set BLANK to low */
+	PORT_TLC5940 &= ~(1<<DD_BLANK);
+}
+
 void TLC5940_Init(uint8_t count, uint8_t dotCorrection[], uint16_t grayScale[])
 {
 	TLC5940_count = count;
+	TLC5940_grayScale = grayScale;
 
 	/* Set the used pins as outputs */
 	DDR_TLC5940 |= (1<<DD_VPRG)|(1<<DD_XLAT)|(1<<DD_BLANK);
@@ -79,7 +97,7 @@ void TLC5940_Init(uint8_t count, uint8_t dotCorrection[], uint16_t grayScale[])
 	/* Set BLANK to high */
 	PORT_TLC5940 |= (1<<DD_BLANK);
 	/* Send the grayscale data */
-	TLC5940_TransmitGS(grayScale);
+	TLC5940_TransmitGS();
 	/* Pulse XLAT */
 	PORT_TLC5940 |= (1<<DD_XLAT);
 	PORT_TLC5940 &= ~(1<<DD_XLAT);
